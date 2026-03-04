@@ -52,5 +52,5 @@ def test_app_config_defaults():
     """AppConfig should have sensible defaults."""
     app = AppConfig()
     assert app.backend == "azure"
-    assert app.local_model == "phi-4-mini-reasoning"
+    assert app.local_model == "qwen2.5-1.5b-instruct-qnn-npu"
     assert app.max_follow_up_questions == 5

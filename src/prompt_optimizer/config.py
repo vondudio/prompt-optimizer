@@ -24,7 +24,7 @@ class AppConfig:
     max_follow_up_questions: int = 5
     scoring_enabled: bool = True
     backend: str = "azure"
-    local_model: str = "phi-4-mini-reasoning"
+    local_model: str = "qwen2.5-1.5b-instruct-qnn-npu"
 
 
 @dataclass

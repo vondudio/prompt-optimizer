@@ -223,7 +223,11 @@ def main() -> None:
     # Show banner with backend info
     backend = args.backend or "azure"
     if backend == "local":
-        model = args.model or "phi-4-mini-reasoning"
+        try:
+            cfg = load_config()
+        except ValueError:
+            cfg = None
+        model = args.model or (cfg.app.local_model if cfg else "unknown")
         console.print(f"[dim]Backend: Foundry Local ({model})[/dim]")
     else:
         console.print("[dim]Backend: Azure OpenAI[/dim]")

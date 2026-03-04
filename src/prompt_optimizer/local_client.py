@@ -24,7 +24,7 @@ def _extract_json_from_markdown(text: str) -> dict[str, Any] | None:
 class LocalClient:
     """LLM client backed by Foundry Local (OpenAI-compatible local endpoint)."""
 
-    def __init__(self, model: str = "phi-4-mini-reasoning"):
+    def __init__(self, model: str = "qwen2.5-1.5b-instruct-qnn-npu"):
         try:
             from foundry_local import FoundryLocalManager
         except ImportError:
