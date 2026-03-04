@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.client import LLMClient
 
 ANALYSIS_SYSTEM_PROMPT = """\
 You are an expert prompt engineer. Analyze the user's prompt and return a JSON object with the following structure:
@@ -33,11 +33,11 @@ Always return valid JSON.
 """
 
 
-def analyze_prompt(client: AzureClient, prompt_text: str) -> dict[str, Any]:
+def analyze_prompt(client: LLMClient, prompt_text: str) -> dict[str, Any]:
     """Analyze a prompt and return structured analysis with gaps and scores.
 
     Args:
-        client: Azure OpenAI client.
+        client: LLM client (Azure or Local).
         prompt_text: The user's raw prompt to analyze.
 
     Returns:
@@ -76,11 +76,11 @@ Always return valid JSON.
 """
 
 
-def improve_prompt(client: AzureClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
+def improve_prompt(client: LLMClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
     """Generate an improved version of a prompt based on analysis.
 
     Args:
-        client: Azure OpenAI client.
+        client: LLM client (Azure or Local).
         prompt_text: The original prompt.
         analysis: The analysis dict from analyze_prompt().
 

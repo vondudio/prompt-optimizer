@@ -1,13 +1,13 @@
 # Prompt Optimizer
 
-A Python CLI tool that transforms rough ideas into well-structured, effective prompts for AI assistants. Powered by Azure OpenAI.
+A Python CLI tool that transforms rough ideas into well-structured, effective prompts for AI assistants. Supports **Azure OpenAI** and **Foundry Local** (on-device NPU/GPU/CPU inference).
 
 ## Features
 
 - **Interactive Q&A Mode** — Analyzes your prompt, asks targeted follow-up questions, and assembles an optimized prompt
 - **One-Shot Analysis** — Paste an existing prompt and get an improved version with scoring
 - **Prompt Scoring** — Rates prompts on clarity, specificity, structure, and actionability (1-10)
-- **Prompt History** — Save, search, and re-use past optimized prompts (SQLite)
+- **Dual Backend** — Use Azure OpenAI in the cloud or Foundry Local for private, on-device inference
 
 ## Quick Start
 
@@ -20,7 +20,15 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-### 2. Configure Azure OpenAI
+For **Foundry Local** (on-device) support, also install:
+
+```bash
+pip install -e ".[local]"
+```
+
+### 2. Configure
+
+#### Option A: Azure OpenAI
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
@@ -35,21 +43,48 @@ AZURE_OPENAI_DEPLOYMENT=gpt-4o
 AZURE_OPENAI_API_VERSION=2024-10-21
 ```
 
+#### Option B: Foundry Local
+
+No credentials needed — Foundry Local runs entirely on your machine. Install the [Foundry Local runtime](https://github.com/microsoft/foundry-local), then:
+
+```bash
+# Set the backend via environment variable...
+export PROMPT_OPT_BACKEND=local
+
+# ...or pass it on the command line
+prompt-optimizer --backend local optimize
+```
+
 ### 3. Run
 
 ```bash
-# Interactive mode (default)
+# Interactive mode (default) — Azure backend
 prompt-optimizer optimize
 
-# One-shot analysis
+# One-shot analysis — Azure backend
 prompt-optimizer analyze
+
+# Interactive mode — Foundry Local backend
+prompt-optimizer --backend local optimize
+
+# Foundry Local with a specific model
+prompt-optimizer --backend local --model phi-4-mini-reasoning optimize
 
 # Or run as a module
 python -m prompt_optimizer optimize
-python -m prompt_optimizer analyze
 ```
 
 ## Usage
+
+### Backend Selection
+
+| Flag | Description |
+|------|-------------|
+| `--backend azure` (default) | Use Azure OpenAI |
+| `--backend local` / `-b local` | Use Foundry Local (on-device) |
+| `--model MODEL` / `-m MODEL` | Model alias for local backend (default: `phi-4-mini-reasoning`) |
+
+You can also set these via environment variables (`PROMPT_OPT_BACKEND`, `PROMPT_OPT_LOCAL_MODEL`) or `config.json`.
 
 ### Interactive Mode (`optimize`)
 
@@ -115,22 +150,6 @@ Changes Made:
 ╰──────────────────────╯
 ```
 
-### History Management
-
-```bash
-# List recent prompts
-prompt-optimizer history list
-
-# Search history
-prompt-optimizer history search "python"
-
-# View a specific entry
-prompt-optimizer history view abc123def456
-
-# Delete an entry
-prompt-optimizer history delete abc123def456
-```
-
 ## Configuration
 
 ### `config.json` (optional)
@@ -140,25 +159,45 @@ Create a `config.json` in the project root for app preferences:
 ```json
 {
   "default_mode": "interactive",
-  "history_db_path": "prompt_history.db",
   "max_follow_up_questions": 5,
-  "scoring_enabled": true
+  "scoring_enabled": true,
+  "backend": "azure",
+  "local_model": "phi-4-mini-reasoning"
 }
 ```
 
-## How It Works
+### Environment Variables
 
-The optimizer follows a structured approach based on prompt engineering best practices:
+| Variable | Description |
+|----------|-------------|
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key |
+| `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (default: `gpt-4o`) |
+| `AZURE_OPENAI_API_VERSION` | API version (default: `2024-10-21`) |
+| `PROMPT_OPT_BACKEND` | Backend: `azure` or `local` |
+| `PROMPT_OPT_LOCAL_MODEL` | Foundry Local model alias |
 
-1. **Analysis** — Uses Azure OpenAI to evaluate your prompt and identify gaps
-2. **Questioning** — Generates targeted questions to fill missing elements
-3. **Assembly** — Combines your answers into a structured prompt following the pattern:
-   - **Role** → Who should the AI be?
-   - **Context** → What background is needed?
-   - **Task** → What exactly needs to be done?
-   - **Format** → What should the output look like?
-   - **Constraints** → What are the boundaries?
-   - **Examples** → Any reference examples?
+## Architecture
+
+```
+CLI (cli.py) → Optimizer (optimizer.py) → Analyzer / Questioner
+                                          Templates (templates.py)
+               ┌─────────────┐
+               │  LLMClient   │  ← Protocol (client.py)
+               │  (Protocol)  │
+               └──────┬───────┘
+                ┌─────┴──────┐
+          AzureClient    LocalClient
+        (azure_client.py) (local_client.py)
+                             │
+                       FoundryLocalManager
+                       (foundry-local-sdk)
+```
+
+- **`client.py`** defines the `LLMClient` protocol with `chat()` and `chat_json()` methods
+- **`azure_client.py`** wraps the Azure OpenAI SDK (`AzureOpenAI`)
+- **`local_client.py`** wraps Foundry Local via the standard `openai.OpenAI` client, with JSON extraction fallback for smaller models
+- **`optimizer.py`** orchestrates the pipeline — all downstream code depends only on the `LLMClient` protocol
 
 ## Development
 

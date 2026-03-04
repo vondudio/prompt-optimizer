@@ -1,19 +1,14 @@
 """CLI interface for Prompt Optimizer."""
 
 import argparse
-import json
 import sys
 
 import questionary
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
-from prompt_optimizer.azure_client import AzureClient
 from prompt_optimizer.config import load_config
-from prompt_optimizer.history import HistoryDB
 from prompt_optimizer.optimizer import Optimizer
 
 console = Console()
@@ -37,22 +32,30 @@ def _print_prompt(prompt_text: str, title: str = "Optimized Prompt") -> None:
     console.print(Panel(prompt_text, title=f"[bold green]{title}[/bold green]", border_style="green"))
 
 
-def _get_client_and_optimizer() -> tuple[AzureClient, Optimizer]:
-    """Load config and create client + optimizer."""
+def _get_client_and_optimizer(args: argparse.Namespace | None = None) -> Optimizer:
+    """Load config and create the appropriate client + optimizer."""
     try:
         cfg = load_config()
     except ValueError as e:
         console.print(f"[bold red]Configuration error:[/bold red] {e}")
         sys.exit(1)
 
-    client = AzureClient(cfg.azure)
-    optimizer = Optimizer(client, max_questions=cfg.app.max_follow_up_questions)
-    return client, optimizer
+    backend = getattr(args, "backend", None) or cfg.app.backend
+    model = getattr(args, "model", None) or cfg.app.local_model
+
+    if backend == "local":
+        from prompt_optimizer.local_client import LocalClient
+        client = LocalClient(model=model)
+    else:
+        from prompt_optimizer.azure_client import AzureClient
+        client = AzureClient(cfg.azure)
+
+    return Optimizer(client, max_questions=cfg.app.max_follow_up_questions)
 
 
 # ── Interactive Mode ─────────────────────────────────────────────────────────
 
-def cmd_interactive() -> None:
+def cmd_interactive(args: argparse.Namespace | None = None) -> None:
     """Interactive Q&A prompt optimization."""
     console.print("\n[bold cyan]🚀 Prompt Optimizer — Interactive Mode[/bold cyan]\n")
 
@@ -64,13 +67,13 @@ def cmd_interactive() -> None:
         console.print("[yellow]No input provided. Exiting.[/yellow]")
         return
 
-    _, optimizer = _get_client_and_optimizer()
+    optimizer = _get_client_and_optimizer(args)
 
     console.print("[bold blue]Analyzing your prompt...[/bold blue]")
     try:
         analysis = optimizer.analyze(raw_prompt)
     except Exception as e:
-        console.print(f"[bold red]Error calling Azure OpenAI:[/bold red] {e}")
+        console.print(f"[bold red]Error during analysis:[/bold red] {e}")
         return
 
     # Show initial analysis
@@ -98,7 +101,6 @@ def cmd_interactive() -> None:
                 console.print(f"[bold red]Error optimizing:[/bold red] {e}")
                 return
         _print_prompt(result["improved_prompt"])
-        _save_to_history(raw_prompt, result["improved_prompt"], result.get("new_scores", {}), "interactive")
         return
 
     console.print(f"\n[bold]I have {len(questions)} question(s) to help refine your prompt:[/bold]\n")
@@ -135,8 +137,6 @@ def cmd_interactive() -> None:
     if result.get("scores"):
         _print_scores(result["scores"], "Final Scores")
 
-    _save_to_history(raw_prompt, optimized, result.get("scores", {}), "interactive")
-
     # Copy option
     if questionary.confirm("Copy optimized prompt to clipboard?", default=True).ask():
         try:
@@ -150,7 +150,7 @@ def cmd_interactive() -> None:
 
 # ── One-Shot Mode ────────────────────────────────────────────────────────────
 
-def cmd_analyze() -> None:
+def cmd_analyze(args: argparse.Namespace | None = None) -> None:
     """One-shot prompt analysis and improvement."""
     console.print("\n[bold cyan]🔍 Prompt Optimizer — One-Shot Analysis[/bold cyan]\n")
 
@@ -162,13 +162,13 @@ def cmd_analyze() -> None:
         console.print("[yellow]No input provided. Exiting.[/yellow]")
         return
 
-    _, optimizer = _get_client_and_optimizer()
+    optimizer = _get_client_and_optimizer(args)
 
     console.print("[bold blue]Analyzing and optimizing...[/bold blue]")
     try:
         result = optimizer.one_shot(raw_prompt)
     except Exception as e:
-        console.print(f"[bold red]Error calling Azure OpenAI:[/bold red] {e}")
+        console.print(f"[bold red]Error during analysis:[/bold red] {e}")
         return
 
     # Show original scores
@@ -189,81 +189,6 @@ def cmd_analyze() -> None:
     if result.get("new_scores"):
         _print_scores(result["new_scores"], "Improved Scores")
 
-    _save_to_history(raw_prompt, result["improved_prompt"], result.get("new_scores", {}), "oneshot")
-
-
-# ── History ──────────────────────────────────────────────────────────────────
-
-def cmd_history(args: argparse.Namespace) -> None:
-    """Manage prompt history."""
-    db = HistoryDB()
-
-    if args.history_action == "list":
-        entries = db.list_all(limit=args.limit if hasattr(args, "limit") else 20)
-        if not entries:
-            console.print("[yellow]No history entries found.[/yellow]")
-            return
-        table = Table(title="Prompt History", show_header=True, header_style="bold cyan")
-        table.add_column("ID", style="dim")
-        table.add_column("Mode")
-        table.add_column("Original (preview)", max_width=50)
-        table.add_column("Tags")
-        table.add_column("Created")
-        for entry in entries:
-            preview = entry["original"][:47] + "..." if len(entry["original"]) > 50 else entry["original"]
-            table.add_row(
-                entry["id"],
-                entry["mode"],
-                preview,
-                entry["tags"],
-                entry["created_at"][:19],
-            )
-        console.print(table)
-
-    elif args.history_action == "view":
-        entry = db.get(args.id)
-        if not entry:
-            console.print(f"[red]Entry '{args.id}' not found.[/red]")
-            return
-        console.print(Panel(entry["original"], title="[bold]Original Prompt[/bold]"))
-        _print_prompt(entry["optimized"])
-        if entry["scores"] and entry["scores"] != "{}":
-            _print_scores(json.loads(entry["scores"]))
-
-    elif args.history_action == "search":
-        entries = db.search(args.query)
-        if not entries:
-            console.print(f"[yellow]No results for '{args.query}'.[/yellow]")
-            return
-        for entry in entries:
-            console.print(f"[bold]{entry['id']}[/bold] ({entry['mode']}) — {entry['original'][:60]}...")
-
-    elif args.history_action == "delete":
-        if db.delete(args.id):
-            console.print(f"[green]Deleted entry '{args.id}'.[/green]")
-        else:
-            console.print(f"[red]Entry '{args.id}' not found.[/red]")
-
-    db.close()
-
-
-# ── History saving helper ────────────────────────────────────────────────────
-
-def _save_to_history(original: str, optimized: str, scores: dict, mode: str) -> None:
-    """Silently save a prompt pair to history."""
-    try:
-        db = HistoryDB()
-        db.save(
-            original=original,
-            optimized=optimized,
-            scores=json.dumps(scores),
-            mode=mode,
-        )
-        db.close()
-        console.print("[dim]✓ Saved to history[/dim]")
-    except Exception:
-        pass  # Don't interrupt the user for history failures
-
 
 # ── CLI Entry Point ──────────────────────────────────────────────────────────
 
@@ -273,6 +198,18 @@ def main() -> None:
         prog="prompt-optimizer",
         description="Transform rough ideas into well-structured AI prompts.",
     )
+    parser.add_argument(
+        "-b", "--backend",
+        choices=["azure", "local"],
+        default=None,
+        help="LLM backend to use (default: from config or 'azure')",
+    )
+    parser.add_argument(
+        "-m", "--model",
+        default=None,
+        help="Model alias for local backend (e.g., phi-4-mini-reasoning)",
+    )
+
     subparsers = parser.add_subparsers(dest="command")
 
     # optimize (interactive)
@@ -281,33 +218,20 @@ def main() -> None:
     # analyze (one-shot)
     subparsers.add_parser("analyze", help="One-shot prompt analysis and improvement")
 
-    # history
-    history_parser = subparsers.add_parser("history", help="Manage prompt history")
-    history_sub = history_parser.add_subparsers(dest="history_action")
-
-    list_parser = history_sub.add_parser("list", help="List recent prompts")
-    list_parser.add_argument("-n", "--limit", type=int, default=20, help="Number of entries")
-
-    view_parser = history_sub.add_parser("view", help="View a specific prompt")
-    view_parser.add_argument("id", help="Prompt history ID")
-
-    search_parser = history_sub.add_parser("search", help="Search prompt history")
-    search_parser.add_argument("query", help="Search query")
-
-    delete_parser = history_sub.add_parser("delete", help="Delete a history entry")
-    delete_parser.add_argument("id", help="Prompt history ID")
-
     args = parser.parse_args()
 
+    # Show banner with backend info
+    backend = args.backend or "azure"
+    if backend == "local":
+        model = args.model or "phi-4-mini-reasoning"
+        console.print(f"[dim]Backend: Foundry Local ({model})[/dim]")
+    else:
+        console.print("[dim]Backend: Azure OpenAI[/dim]")
+
     if args.command == "optimize" or args.command is None:
-        cmd_interactive()
+        cmd_interactive(args)
     elif args.command == "analyze":
-        cmd_analyze()
-    elif args.command == "history":
-        if not args.history_action:
-            cmd_history(argparse.Namespace(history_action="list", limit=20))
-        else:
-            cmd_history(args)
+        cmd_analyze(args)
     else:
         parser.print_help()
 

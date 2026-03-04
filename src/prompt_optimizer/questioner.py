@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.client import LLMClient
 
 QUESTION_SYSTEM_PROMPT = """\
 You are an expert prompt engineer helping a user build a better prompt.
@@ -32,7 +32,7 @@ Always return valid JSON.
 
 
 def generate_questions(
-    client: AzureClient,
+    client: LLMClient,
     prompt_text: str,
     analysis: dict[str, Any],
     max_questions: int = 5,
@@ -40,7 +40,7 @@ def generate_questions(
     """Generate follow-up questions to fill gaps in the user's prompt.
 
     Args:
-        client: Azure OpenAI client.
+        client: LLM client (Azure or Local).
         prompt_text: The user's original prompt.
         analysis: Analysis dict from analyzer.analyze_prompt().
         max_questions: Maximum number of questions to generate.
@@ -89,14 +89,14 @@ Always return valid JSON.
 
 
 def assemble_from_answers(
-    client: AzureClient,
+    client: LLMClient,
     prompt_text: str,
     questions_and_answers: list[dict[str, str]],
 ) -> dict[str, Any]:
     """Assemble an optimized prompt from original input plus Q&A answers.
 
     Args:
-        client: Azure OpenAI client.
+        client: LLM client (Azure or Local).
         prompt_text: The user's original prompt.
         questions_and_answers: List of {"question": ..., "answer": ...} dicts.
 
