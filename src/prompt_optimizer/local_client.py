@@ -57,7 +57,7 @@ class LocalClient:
             "model": self._model,
             "messages": messages,
             "temperature": temperature,
-            "max_completion_tokens": max_tokens,
+            "max_tokens": max_tokens,
         }
         # JSON mode may not be supported by all local models — try but don't fail
         if json_mode:
