@@ -33,16 +33,17 @@ class LocalClient:
                 "Install it with: pip install prompt-optimizer[local]"
             )
 
-        self._model = model
-        console.print(f"[dim]Starting Foundry Local service and loading model '{model}'...[/dim]")
-
         self._manager = FoundryLocalManager(model)
+
+        # The API model ID differs from the catalog alias
+        self._model = self._manager.get_model_info(model).id
         endpoint = self._manager.endpoint
+        console.print(f"[dim]Foundry Local ready — model ID: {self._model}[/dim]")
 
         from openai import OpenAI
         self._client = OpenAI(
             base_url=endpoint,
-            api_key="foundry-local",
+            api_key=self._manager.api_key,
         )
 
     def chat(
