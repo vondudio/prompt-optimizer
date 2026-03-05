@@ -9,15 +9,40 @@ from rich.console import Console
 console = Console(stderr=True)
 
 
-def _extract_json_from_markdown(text: str) -> dict[str, Any] | None:
-    """Try to extract a JSON object from markdown code fences."""
-    pattern = r"```(?:json)?\s*\n?(.*?)\n?\s*```"
-    match = re.search(pattern, text, re.DOTALL)
-    if match:
+def _extract_json_from_text(text: str) -> dict[str, Any] | None:
+    """Extract a JSON object from text that may contain markdown fences or other wrapping.
+
+    Handles:
+    - Complete code fences: ```json ... ```
+    - Unclosed code fences (truncated responses): ```json ...
+    - Raw JSON object embedded in prose
+    """
+    # Strip markdown code fence wrapper if present (closed or unclosed)
+    fence_match = re.search(r"```(?:json)?\s*\n?([\s\S]*?)(?:\n?\s*```|$)", text)
+    if fence_match:
+        content = fence_match.group(1).strip()
         try:
-            return json.loads(match.group(1).strip())
+            return json.loads(content)
         except json.JSONDecodeError:
-            return None
+            pass
+
+    # Find the first { and try to parse a JSON object from there
+    idx = text.find("{")
+    if idx != -1:
+        # Try progressively shorter substrings from the last } backwards
+        candidate = text[idx:]
+        last_brace = candidate.rfind("}")
+        if last_brace != -1:
+            try:
+                return json.loads(candidate[: last_brace + 1])
+            except json.JSONDecodeError:
+                pass
+        # Try the whole remainder (in case it ends with })
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
     return None
 
 
@@ -98,8 +123,8 @@ class LocalClient:
         except json.JSONDecodeError:
             pass
 
-        # Step 2: Try extracting from markdown code fences
-        extracted = _extract_json_from_markdown(raw)
+        # Step 2: Try extracting from markdown fences or raw text
+        extracted = _extract_json_from_text(raw)
         if extracted is not None:
             return extracted
 
@@ -122,12 +147,12 @@ class LocalClient:
         except json.JSONDecodeError:
             pass
 
-        extracted_retry = _extract_json_from_markdown(raw_retry)
+        extracted_retry = _extract_json_from_text(raw_retry)
         if extracted_retry is not None:
             return extracted_retry
 
         # Step 4: Give up
         raise ValueError(
             f"Failed to parse JSON from local model response after retry. "
-            f"Raw response (truncated): {raw_retry[:200]}"
+            f"Raw response (truncated): {raw_retry[:500]}"
         )

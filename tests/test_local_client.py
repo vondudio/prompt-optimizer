@@ -5,37 +5,51 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prompt_optimizer.local_client import LocalClient, _extract_json_from_markdown
+from prompt_optimizer.local_client import LocalClient, _extract_json_from_text
 
 
 # ── JSON extraction helper tests ─────────────────────────────────────────────
 
 
-def test_extract_json_from_markdown_with_json_fence():
+def test_extract_json_from_text_with_json_fence():
     """Should extract JSON from ```json ... ``` blocks."""
     text = 'Here is the result:\n```json\n{"key": "value"}\n```\nDone.'
-    result = _extract_json_from_markdown(text)
+    result = _extract_json_from_text(text)
     assert result == {"key": "value"}
 
 
-def test_extract_json_from_markdown_with_plain_fence():
+def test_extract_json_from_text_with_plain_fence():
     """Should extract JSON from ``` ... ``` blocks (no language tag)."""
     text = 'Result:\n```\n{"a": 1, "b": 2}\n```'
-    result = _extract_json_from_markdown(text)
+    result = _extract_json_from_text(text)
     assert result == {"a": 1, "b": 2}
 
 
-def test_extract_json_from_markdown_no_fence():
-    """Should return None when no code fence is present."""
+def test_extract_json_from_text_no_fence():
+    """Should extract JSON even without code fences."""
     text = '{"key": "value"}'
-    result = _extract_json_from_markdown(text)
-    assert result is None
+    result = _extract_json_from_text(text)
+    assert result == {"key": "value"}
 
 
-def test_extract_json_from_markdown_invalid_json():
-    """Should return None when code fence contains invalid JSON."""
-    text = '```json\nnot valid json\n```'
-    result = _extract_json_from_markdown(text)
+def test_extract_json_from_text_unclosed_fence():
+    """Should extract JSON from an unclosed code fence (truncated response)."""
+    text = '```json\n{"key": "value", "num": 42}'
+    result = _extract_json_from_text(text)
+    assert result == {"key": "value", "num": 42}
+
+
+def test_extract_json_from_text_embedded_in_prose():
+    """Should find JSON object embedded in surrounding text."""
+    text = 'Here is my answer:\n{"key": "value"}\nHope that helps!'
+    result = _extract_json_from_text(text)
+    assert result == {"key": "value"}
+
+
+def test_extract_json_from_text_invalid_json():
+    """Should return None when no valid JSON can be found."""
+    text = 'not valid json at all'
+    result = _extract_json_from_text(text)
     assert result is None
 
 
