@@ -80,7 +80,8 @@ def cmd_interactive(args: argparse.Namespace | None = None) -> None:
     console.print("\n[bold]Initial Analysis[/bold]")
     console.print(f"  Summary: {analysis.get('summary', 'N/A')}")
     if analysis.get("gaps"):
-        console.print(f"  [yellow]Gaps found:[/yellow] {', '.join(analysis['gaps'])}")
+        gap_strs = [g if isinstance(g, str) else str(g.get("description", g)) for g in analysis["gaps"]]
+        console.print(f"  [yellow]Gaps found:[/yellow] {', '.join(gap_strs)}")
     if analysis.get("scores"):
         _print_scores(analysis["scores"], "Current Scores")
 

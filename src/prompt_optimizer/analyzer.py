@@ -34,9 +34,10 @@ Always return valid JSON.
 
 # Compact version for smaller local models that have limited output tokens
 ANALYSIS_SYSTEM_PROMPT_COMPACT = """\
-Analyze the prompt. Return ONLY this JSON (keep values short):
-{"summary":"...","gaps":["..."],"scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
-Always return valid JSON. No markdown fences.
+You are a prompt engineer. Do NOT answer the user's prompt. Instead, analyze its STRUCTURE and identify what is missing.
+Return ONLY this JSON (keep values short, gaps as short strings):
+{"summary":"what the prompt asks for","gaps":["missing role","missing format"],"scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
+No markdown fences.
 """
 
 
@@ -88,9 +89,10 @@ Always return valid JSON.
 
 # Compact version for smaller local models
 IMPROVEMENT_SYSTEM_PROMPT_COMPACT = """\
-Improve the prompt. Return ONLY this JSON (keep values short):
-{"improved_prompt":"...","changes_made":["..."],"new_scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
-Always return valid JSON. No markdown fences.
+You are a prompt engineer. Rewrite the user's prompt to be clearer and more structured. Do NOT answer the prompt itself.
+Return ONLY this JSON:
+{"improved_prompt":"the rewritten prompt text","changes_made":["change1"],"new_scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
+No markdown fences.
 """
 
 
