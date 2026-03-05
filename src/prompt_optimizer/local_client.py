@@ -46,11 +46,14 @@ class LocalClient:
             api_key=self._manager.api_key,
         )
 
+    # Higher default max_tokens for local models — smaller models are more verbose
+    _DEFAULT_MAX_TOKENS = 4096
+
     def chat(
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         json_mode: bool = False,
     ) -> str:
         """Send a chat completion to the local Foundry model."""
@@ -77,7 +80,7 @@ class LocalClient:
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.4,
-        max_tokens: int = 2048,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
     ) -> dict[str, Any]:
         """Send a chat request and parse the response as JSON.
 
@@ -100,13 +103,14 @@ class LocalClient:
         if extracted is not None:
             return extracted
 
-        # Step 3: Retry with stronger JSON instruction
+        # Step 3: Retry with stronger JSON instruction and compact output request
         retry_messages = [
             {
                 "role": "system",
                 "content": (
                     "You MUST return ONLY valid JSON. No markdown, no explanation, "
-                    "no code fences. Output a single JSON object and nothing else."
+                    "no code fences. Output a single JSON object and nothing else. "
+                    "Keep string values short and concise to avoid truncation."
                 ),
             },
             *messages,
