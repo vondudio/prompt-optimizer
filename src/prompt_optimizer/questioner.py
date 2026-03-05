@@ -30,6 +30,14 @@ Rules:
 Always return valid JSON.
 """
 
+# Compact version for smaller local models
+QUESTION_SYSTEM_PROMPT_COMPACT = """\
+Generate follow-up questions for gaps in the user's prompt. Max {max_questions} questions.
+Return ONLY this JSON (keep values short):
+{{"questions":[{{"id":"q1","question":"...","purpose":"...","suggestions":["..."]}}]}}
+No markdown fences.
+"""
+
 
 def generate_questions(
     client: LLMClient,
@@ -48,7 +56,11 @@ def generate_questions(
     Returns:
         List of question dicts with id, question, purpose, and suggestions.
     """
-    system = QUESTION_SYSTEM_PROMPT.replace("{max_questions}", str(max_questions))
+    from prompt_optimizer.local_client import LocalClient
+    is_local = isinstance(client, LocalClient)
+    template = QUESTION_SYSTEM_PROMPT_COMPACT if is_local else QUESTION_SYSTEM_PROMPT
+    system = template.replace("{max_questions}", str(max_questions))
+
     messages = [
         {"role": "system", "content": system},
         {
@@ -87,6 +99,14 @@ The optimized prompt should:
 Always return valid JSON.
 """
 
+# Compact version for smaller local models
+ASSEMBLY_SYSTEM_PROMPT_COMPACT = """\
+Combine the prompt and Q&A answers into an improved prompt.
+Return ONLY this JSON:
+{"optimized_prompt":"...","scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0},"summary":"..."}
+No markdown fences.
+"""
+
 
 def assemble_from_answers(
     client: LLMClient,
@@ -103,11 +123,15 @@ def assemble_from_answers(
     Returns:
         Dict with optimized_prompt, scores, and summary.
     """
+    from prompt_optimizer.local_client import LocalClient
+    is_local = isinstance(client, LocalClient)
+    system = ASSEMBLY_SYSTEM_PROMPT_COMPACT if is_local else ASSEMBLY_SYSTEM_PROMPT
+
     qa_text = "\n".join(
         f"Q: {qa['question']}\nA: {qa['answer']}" for qa in questions_and_answers
     )
     messages = [
-        {"role": "system", "content": ASSEMBLY_SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {
             "role": "user",
             "content": (

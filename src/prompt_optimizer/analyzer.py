@@ -32,6 +32,13 @@ no constraints or boundaries, missing context, no examples, unclear audience, un
 Always return valid JSON.
 """
 
+# Compact version for smaller local models that have limited output tokens
+ANALYSIS_SYSTEM_PROMPT_COMPACT = """\
+Analyze the prompt. Return ONLY this JSON (keep values short):
+{"summary":"...","gaps":["..."],"scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
+Always return valid JSON. No markdown fences.
+"""
+
 
 def analyze_prompt(client: LLMClient, prompt_text: str) -> dict[str, Any]:
     """Analyze a prompt and return structured analysis with gaps and scores.
@@ -43,8 +50,12 @@ def analyze_prompt(client: LLMClient, prompt_text: str) -> dict[str, Any]:
     Returns:
         Analysis dict with detected components, gaps, scores, and suggestions.
     """
+    from prompt_optimizer.local_client import LocalClient
+    is_local = isinstance(client, LocalClient)
+    system = ANALYSIS_SYSTEM_PROMPT_COMPACT if is_local else ANALYSIS_SYSTEM_PROMPT
+
     messages = [
-        {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": f"Analyze this prompt:\n\n{prompt_text}"},
     ]
     return client.chat_json(messages, temperature=0.3)
@@ -75,6 +86,13 @@ The improved prompt should:
 Always return valid JSON.
 """
 
+# Compact version for smaller local models
+IMPROVEMENT_SYSTEM_PROMPT_COMPACT = """\
+Improve the prompt. Return ONLY this JSON (keep values short):
+{"improved_prompt":"...","changes_made":["..."],"new_scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
+Always return valid JSON. No markdown fences.
+"""
+
 
 def improve_prompt(client: LLMClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
     """Generate an improved version of a prompt based on analysis.
@@ -87,8 +105,12 @@ def improve_prompt(client: LLMClient, prompt_text: str, analysis: dict[str, Any]
     Returns:
         Dict with improved_prompt, changes_made, and new_scores.
     """
+    from prompt_optimizer.local_client import LocalClient
+    is_local = isinstance(client, LocalClient)
+    system = IMPROVEMENT_SYSTEM_PROMPT_COMPACT if is_local else IMPROVEMENT_SYSTEM_PROMPT
+
     messages = [
-        {"role": "system", "content": IMPROVEMENT_SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {
             "role": "user",
             "content": (
