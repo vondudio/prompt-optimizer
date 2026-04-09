@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.client import LLMClient
 
 ANALYSIS_SYSTEM_PROMPT = """\
 You are an expert prompt engineer. Analyze the user's prompt and return a JSON object with the following structure:
@@ -32,19 +32,31 @@ no constraints or boundaries, missing context, no examples, unclear audience, un
 Always return valid JSON.
 """
 
+# Compact version for smaller local models that have limited output tokens
+ANALYSIS_SYSTEM_PROMPT_COMPACT = """\
+You are a prompt engineer. Do NOT answer the user's prompt. Instead, analyze its STRUCTURE and identify what is missing.
+Return ONLY this JSON (keep values short, gaps as short strings):
+{"summary":"what the prompt asks for","gaps":["missing role","missing format"],"scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
+No markdown fences.
+"""
 
-def analyze_prompt(client: AzureClient, prompt_text: str) -> dict[str, Any]:
+
+def analyze_prompt(client: LLMClient, prompt_text: str) -> dict[str, Any]:
     """Analyze a prompt and return structured analysis with gaps and scores.
 
     Args:
-        client: Azure OpenAI client.
+        client: LLM client (Azure or Local).
         prompt_text: The user's raw prompt to analyze.
 
     Returns:
         Analysis dict with detected components, gaps, scores, and suggestions.
     """
+    from prompt_optimizer.local_client import LocalClient
+    is_local = isinstance(client, LocalClient)
+    system = ANALYSIS_SYSTEM_PROMPT_COMPACT if is_local else ANALYSIS_SYSTEM_PROMPT
+
     messages = [
-        {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": f"Analyze this prompt:\n\n{prompt_text}"},
     ]
     return client.chat_json(messages, temperature=0.3)
@@ -75,20 +87,32 @@ The improved prompt should:
 Always return valid JSON.
 """
 
+# Compact version for smaller local models
+IMPROVEMENT_SYSTEM_PROMPT_COMPACT = """\
+You are a prompt engineer. Rewrite the user's prompt to be clearer and more structured. Do NOT answer the prompt itself.
+Return ONLY this JSON:
+{"improved_prompt":"the rewritten prompt text","changes_made":["change1"],"new_scores":{"clarity":0,"specificity":0,"structure":0,"actionability":0}}
+No markdown fences.
+"""
 
-def improve_prompt(client: AzureClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
+
+def improve_prompt(client: LLMClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
     """Generate an improved version of a prompt based on analysis.
 
     Args:
-        client: Azure OpenAI client.
+        client: LLM client (Azure or Local).
         prompt_text: The original prompt.
         analysis: The analysis dict from analyze_prompt().
 
     Returns:
         Dict with improved_prompt, changes_made, and new_scores.
     """
+    from prompt_optimizer.local_client import LocalClient
+    is_local = isinstance(client, LocalClient)
+    system = IMPROVEMENT_SYSTEM_PROMPT_COMPACT if is_local else IMPROVEMENT_SYSTEM_PROMPT
+
     messages = [
-        {"role": "system", "content": IMPROVEMENT_SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {
             "role": "user",
             "content": (
