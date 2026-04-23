@@ -187,9 +187,13 @@ def cmd_analyze() -> None:
 
     # Show new scores
     if result.get("new_scores"):
-        _print_scores(result["new_scores"], "Improved Scores")
+        _print_scores(result["new_scores"], "Improved Scores (self-reported)")
 
-    _save_to_history(raw_prompt, result["improved_prompt"], result.get("new_scores", {}), "oneshot")
+    # Show independently verified scores
+    if result.get("verified_scores"):
+        _print_scores(result["verified_scores"], "Verified Scores (independent re-analysis)")
+
+    _save_to_history(raw_prompt, result["improved_prompt"], result.get("verified_scores") or result.get("new_scores", {}), "oneshot")
 
 
 # ── History ──────────────────────────────────────────────────────────────────

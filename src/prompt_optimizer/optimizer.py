@@ -23,17 +23,25 @@ class Optimizer:
 
         Returns:
             Dict with keys: original_analysis, improved_prompt, changes_made,
-            original_scores, new_scores.
+            original_scores, new_scores, verified_scores.
         """
         analysis = self.analyze(prompt_text)
         improvement = improve_prompt(self._client, prompt_text, analysis)
+        improved_text = improvement.get("improved_prompt", "")
+
+        # Independent re-analysis of the improved prompt for verified scoring
+        verified_scores = {}
+        if improved_text:
+            verification = analyze_prompt(self._client, improved_text)
+            verified_scores = verification.get("scores", {})
 
         return {
             "original_analysis": analysis,
-            "improved_prompt": improvement.get("improved_prompt", ""),
+            "improved_prompt": improved_text,
             "changes_made": improvement.get("changes_made", []),
             "original_scores": analysis.get("scores", {}),
             "new_scores": improvement.get("new_scores", {}),
+            "verified_scores": verified_scores,
         }
 
     def get_questions(self, prompt_text: str, analysis: dict[str, Any]) -> list[dict[str, Any]]:

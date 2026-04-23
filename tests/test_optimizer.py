@@ -13,7 +13,7 @@ def _make_optimizer() -> tuple[Optimizer, MagicMock]:
 
 
 def test_one_shot_returns_combined_result():
-    """one_shot should combine analysis and improvement results."""
+    """one_shot should combine analysis, improvement, and verified re-analysis."""
     optimizer, client = _make_optimizer()
 
     analysis = {
@@ -26,7 +26,12 @@ def test_one_shot_returns_combined_result():
         "changes_made": ["Added role"],
         "new_scores": {"clarity": 9, "specificity": 8, "structure": 8, "actionability": 9},
     }
-    client.chat_json.side_effect = [analysis, improvement]
+    verification = {
+        "summary": "Better prompt analysis",
+        "gaps": [],
+        "scores": {"clarity": 8, "specificity": 7, "structure": 8, "actionability": 8},
+    }
+    client.chat_json.side_effect = [analysis, improvement, verification]
 
     result = optimizer.one_shot("Test prompt")
 
@@ -34,7 +39,8 @@ def test_one_shot_returns_combined_result():
     assert result["changes_made"] == ["Added role"]
     assert result["original_scores"] == analysis["scores"]
     assert result["new_scores"] == improvement["new_scores"]
-    assert client.chat_json.call_count == 2
+    assert result["verified_scores"] == verification["scores"]
+    assert client.chat_json.call_count == 3
 
 
 def test_analyze_delegates_to_client():
