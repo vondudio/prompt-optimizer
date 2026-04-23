@@ -3,12 +3,55 @@
 import json
 from typing import Any
 
-from prompt_optimizer.azure_client import AzureClient
+from pydantic import ValidationError
+from rich.console import Console
 
-ANALYSIS_SYSTEM_PROMPT = """\
+from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.schemas import AnalysisResult, ImprovementResult
+
+console = Console(stderr=True)
+from prompt_optimizer.templates import SCORING_DIMENSIONS
+
+# Anchor examples for each scoring dimension (low / medium / high)
+_SCORING_ANCHORS: dict[str, dict[str, str]] = {
+    "clarity": {
+        "2-3": "vague, multiple interpretations possible",
+        "5-6": "main intent clear but some ambiguity",
+        "8-9": "unambiguous, single clear interpretation",
+    },
+    "specificity": {
+        "2-3": "generic request, could apply to anything",
+        "5-6": "some details but key parameters missing",
+        "8-9": "precise requirements, concrete parameters",
+    },
+    "structure": {
+        "2-3": "stream of consciousness, no organization",
+        "5-6": "some logical flow but could be clearer",
+        "8-9": "clear sections, logical progression",
+    },
+    "actionability": {
+        "2-3": "unclear what to produce",
+        "5-6": "general direction clear but output underspecified",
+        "8-9": "immediately executable, output fully defined",
+    },
+}
+
+
+def _build_scoring_rubric() -> str:
+    """Build the scoring rubric from SCORING_DIMENSIONS and anchor examples."""
+    lines: list[str] = ["Score each dimension on a 1-10 scale using this rubric:\n"]
+    for dim, description in SCORING_DIMENSIONS.items():
+        lines.append(f"- **{dim}**: {description}")
+        anchors = _SCORING_ANCHORS[dim]
+        for range_label, anchor_text in anchors.items():
+            lines.append(f"    {range_label} = \"{anchor_text}\"")
+    return "\n".join(lines)
+
+
+ANALYSIS_SYSTEM_PROMPT = f"""\
 You are an expert prompt engineer. Analyze the user's prompt and return a JSON object with the following structure:
 
-{
+{{
   "summary": "Brief summary of what the prompt is asking for",
   "detected_role": "The role/persona detected, or empty string if missing",
   "detected_task": "The core task detected",
@@ -18,14 +61,22 @@ You are an expert prompt engineer. Analyze the user's prompt and return a JSON o
   "detected_tone": "Tone/style if mentioned, or empty string if missing",
   "detected_constraints": ["list of constraints found"],
   "gaps": ["list of missing elements that would improve the prompt"],
-  "scores": {
+  "scores": {{
     "clarity": <1-10>,
     "specificity": <1-10>,
     "structure": <1-10>,
     "actionability": <1-10>
-  },
+  }},
+  "score_explanations": {{
+    "clarity": "1-2 sentence explanation of why this score",
+    "specificity": "1-2 sentence explanation of why this score",
+    "structure": "1-2 sentence explanation of why this score",
+    "actionability": "1-2 sentence explanation of why this score"
+  }},
   "improvement_suggestions": ["list of specific suggestions to improve the prompt"]
-}
+}}
+
+{_build_scoring_rubric()}
 
 Be thorough. Common gaps include: missing role/persona, no output format, vague task description,
 no constraints or boundaries, missing context, no examples, unclear audience, unspecified tone.
@@ -47,23 +98,36 @@ def analyze_prompt(client: AzureClient, prompt_text: str) -> dict[str, Any]:
         {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
         {"role": "user", "content": f"Analyze this prompt:\n\n{prompt_text}"},
     ]
-    return client.chat_json(messages, temperature=0.3)
+    result = client.chat_json(messages, temperature=0.3)
+    try:
+        AnalysisResult.model_validate(result)
+    except ValidationError as exc:
+        console.print(f"[yellow]Warning: analysis response failed validation: {exc}[/yellow]")
+    return result
 
 
-IMPROVEMENT_SYSTEM_PROMPT = """\
+IMPROVEMENT_SYSTEM_PROMPT = f"""\
 You are an expert prompt engineer. Given a prompt and its analysis, produce an improved version.
 Return a JSON object:
 
-{
+{{
   "improved_prompt": "The full improved prompt text",
   "changes_made": ["list of changes/improvements applied"],
-  "new_scores": {
+  "new_scores": {{
     "clarity": <1-10>,
     "specificity": <1-10>,
     "structure": <1-10>,
     "actionability": <1-10>
-  }
-}
+  }},
+  "score_explanations": {{
+    "clarity": "1-2 sentence explanation of why this score",
+    "specificity": "1-2 sentence explanation of why this score",
+    "structure": "1-2 sentence explanation of why this score",
+    "actionability": "1-2 sentence explanation of why this score"
+  }}
+}}
+
+{_build_scoring_rubric()}
 
 The improved prompt should:
 - Include a clear role/persona if appropriate
@@ -98,4 +162,9 @@ def improve_prompt(client: AzureClient, prompt_text: str, analysis: dict[str, An
             ),
         },
     ]
-    return client.chat_json(messages, temperature=0.5)
+    result = client.chat_json(messages, temperature=0.5)
+    try:
+        ImprovementResult.model_validate(result)
+    except ValidationError as exc:
+        console.print(f"[yellow]Warning: improvement response failed validation: {exc}[/yellow]")
+    return result

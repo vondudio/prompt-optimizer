@@ -2,7 +2,13 @@
 
 from typing import Any
 
+from pydantic import ValidationError
+from rich.console import Console
+
 from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.schemas import AssemblyResult, QuestionSet
+
+console = Console(stderr=True)
 
 QUESTION_SYSTEM_PROMPT = """\
 You are an expert prompt engineer helping a user build a better prompt.
@@ -61,6 +67,10 @@ def generate_questions(
         },
     ]
     result = client.chat_json(messages, temperature=0.5)
+    try:
+        QuestionSet.model_validate(result)
+    except ValidationError as exc:
+        console.print(f"[yellow]Warning: questions response failed validation: {exc}[/yellow]")
     return result.get("questions", [])
 
 
@@ -117,4 +127,9 @@ def assemble_from_answers(
             ),
         },
     ]
-    return client.chat_json(messages, temperature=0.5)
+    result = client.chat_json(messages, temperature=0.5)
+    try:
+        AssemblyResult.model_validate(result)
+    except ValidationError as exc:
+        console.print(f"[yellow]Warning: assembly response failed validation: {exc}[/yellow]")
+    return result

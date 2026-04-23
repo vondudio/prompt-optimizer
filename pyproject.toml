@@ -9,6 +9,7 @@ description = "A CLI tool that optimizes prompts for AI assistants using Azure O
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.0",
+    "pydantic>=2.0",
     "rich>=13.0",
     "questionary>=2.0",
     "python-dotenv>=1.0",
