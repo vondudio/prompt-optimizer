@@ -3,14 +3,14 @@
 from typing import Any
 
 from prompt_optimizer.analyzer import analyze_prompt, improve_prompt
-from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.client import LLMClient
 from prompt_optimizer.questioner import generate_questions, assemble_from_answers
 
 
 class Optimizer:
     """Orchestrates the prompt optimization pipeline."""
 
-    def __init__(self, client: AzureClient, max_questions: int = 5):
+    def __init__(self, client: LLMClient, max_questions: int = 5):
         self._client = client
         self._max_questions = max_questions
 

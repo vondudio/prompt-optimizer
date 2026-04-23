@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import ValidationError
 from rich.console import Console
 
-from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.client import LLMClient
 from prompt_optimizer.schemas import AssemblyResult, QuestionSet
 
 console = Console(stderr=True)
@@ -38,7 +38,7 @@ Always return valid JSON.
 
 
 def generate_questions(
-    client: AzureClient,
+    client: LLMClient,
     prompt_text: str,
     analysis: dict[str, Any],
     max_questions: int = 5,
@@ -99,7 +99,7 @@ Always return valid JSON.
 
 
 def assemble_from_answers(
-    client: AzureClient,
+    client: LLMClient,
     prompt_text: str,
     questions_and_answers: list[dict[str, str]],
 ) -> dict[str, Any]:
