@@ -150,10 +150,130 @@ def cmd_interactive() -> None:
 
 # ── One-Shot Mode ────────────────────────────────────────────────────────────
 
-def cmd_analyze() -> None:
+def _export_json(results: list[dict], output_path: str) -> None:
+    """Export results as JSON."""
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    console.print(f"[green]✓ Results exported to {output_path}[/green]")
+
+
+def _export_markdown(results: list[dict], output_path: str) -> None:
+    """Export results as Markdown."""
+    lines = ["# Prompt Analysis Results\n"]
+    for i, r in enumerate(results, 1):
+        lines.append(f"## Prompt {i}\n")
+        lines.append(f"### Original\n{r['original']}\n")
+        lines.append(f"### Improved\n{r['improved']}\n")
+        if r.get('changes_made'):
+            lines.append("### Changes\n")
+            for c in r['changes_made']:
+                lines.append(f"- {c}")
+            lines.append("")
+        if r.get('verified_scores') or r.get('new_scores'):
+            scores = r.get('verified_scores') or r.get('new_scores', {})
+            lines.append("### Scores\n")
+            lines.append("| Dimension | Score |")
+            lines.append("|-----------|-------|")
+            for dim, val in scores.items():
+                lines.append(f"| {dim.capitalize()} | {val}/10 |")
+            lines.append("")
+        lines.append("---\n")
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
+    console.print(f"[green]✓ Results exported to {output_path}[/green]")
+
+
+def _display_one_shot_result(result: dict, raw_prompt: str, label: str = "") -> None:
+    """Display a single one-shot result to the terminal."""
+    if label:
+        console.print(f"\n[bold magenta]{label}[/bold magenta]")
+
+    if result.get("original_scores"):
+        _print_scores(result["original_scores"], "Original Scores")
+
+    if result.get("changes_made"):
+        console.print("\n[bold]Changes Made:[/bold]")
+        for change in result["changes_made"]:
+            console.print(f"  [green]✓[/green] {change}")
+
+    console.print()
+    _print_prompt(result["improved_prompt"])
+
+    if result.get("new_scores"):
+        _print_scores(result["new_scores"], "Improved Scores (self-reported)")
+
+    if result.get("verified_scores"):
+        _print_scores(result["verified_scores"], "Verified Scores (independent re-analysis)")
+
+
+def cmd_analyze(args: argparse.Namespace | None = None) -> None:
     """One-shot prompt analysis and improvement."""
     console.print("\n[bold cyan]🔍 Prompt Optimizer — One-Shot Analysis[/bold cyan]\n")
 
+    # Batch mode: read prompts from file
+    if args is not None and hasattr(args, 'input') and args.input:
+        input_path = args.input
+        try:
+            with open(input_path, "r") as f:
+                content = f.read()
+        except FileNotFoundError:
+            console.print(f"[bold red]File not found:[/bold red] {input_path}")
+            return
+        except Exception as e:
+            console.print(f"[bold red]Error reading file:[/bold red] {e}")
+            return
+
+        # Parse as JSON array or line-delimited
+        try:
+            prompts = json.loads(content)
+            if not isinstance(prompts, list):
+                console.print("[bold red]JSON file must contain an array of strings.[/bold red]")
+                return
+        except (json.JSONDecodeError, ValueError):
+            prompts = [line.strip() for line in content.splitlines() if line.strip()]
+
+        if not prompts:
+            console.print("[yellow]No prompts found in input file.[/yellow]")
+            return
+
+        console.print(f"[bold blue]Processing {len(prompts)} prompt(s)...[/bold blue]")
+        _, optimizer = _get_client_and_optimizer()
+
+        collected_results: list[dict] = []
+        for i, prompt in enumerate(prompts, 1):
+            console.print(f"\n[bold blue]Analyzing prompt {i}/{len(prompts)}...[/bold blue]")
+            try:
+                result = optimizer.one_shot(prompt)
+            except Exception as e:
+                console.print(f"[bold red]Error on prompt {i}:[/bold red] {e}")
+                continue
+
+            _display_one_shot_result(result, prompt, label=f"━━ Prompt {i}/{len(prompts)} ━━")
+            _save_to_history(prompt, result["improved_prompt"], result.get("verified_scores") or result.get("new_scores", {}), "oneshot")
+
+            collected_results.append({
+                "original": prompt,
+                "improved": result["improved_prompt"],
+                "original_scores": result.get("original_scores", {}),
+                "new_scores": result.get("new_scores", {}),
+                "verified_scores": result.get("verified_scores", {}),
+                "changes_made": result.get("changes_made", []),
+            })
+
+        # Export if --output provided
+        if hasattr(args, 'output') and args.output and collected_results:
+            output_path = args.output
+            if output_path.endswith(".json"):
+                _export_json(collected_results, output_path)
+            elif output_path.endswith(".md"):
+                _export_markdown(collected_results, output_path)
+            else:
+                console.print(f"[yellow]Unknown output format. Use .json or .md extension. Defaulting to JSON.[/yellow]")
+                _export_json(collected_results, output_path)
+
+        return
+
+    # Interactive single-prompt mode
     raw_prompt = questionary.text(
         "Paste your prompt to optimize (press Enter to submit):",
     ).ask()
@@ -171,29 +291,27 @@ def cmd_analyze() -> None:
         console.print(f"[bold red]Error calling Azure OpenAI:[/bold red] {e}")
         return
 
-    # Show original scores
-    if result.get("original_scores"):
-        _print_scores(result["original_scores"], "Original Scores")
-
-    # Show changes
-    if result.get("changes_made"):
-        console.print("\n[bold]Changes Made:[/bold]")
-        for change in result["changes_made"]:
-            console.print(f"  [green]✓[/green] {change}")
-
-    # Show improved prompt
-    console.print()
-    _print_prompt(result["improved_prompt"])
-
-    # Show new scores
-    if result.get("new_scores"):
-        _print_scores(result["new_scores"], "Improved Scores (self-reported)")
-
-    # Show independently verified scores
-    if result.get("verified_scores"):
-        _print_scores(result["verified_scores"], "Verified Scores (independent re-analysis)")
-
+    _display_one_shot_result(result, raw_prompt)
     _save_to_history(raw_prompt, result["improved_prompt"], result.get("verified_scores") or result.get("new_scores", {}), "oneshot")
+
+    # Export single result if --output provided
+    if args is not None and hasattr(args, 'output') and args.output:
+        output_path = args.output
+        collected_results = [{
+            "original": raw_prompt,
+            "improved": result["improved_prompt"],
+            "original_scores": result.get("original_scores", {}),
+            "new_scores": result.get("new_scores", {}),
+            "verified_scores": result.get("verified_scores", {}),
+            "changes_made": result.get("changes_made", []),
+        }]
+        if output_path.endswith(".json"):
+            _export_json(collected_results, output_path)
+        elif output_path.endswith(".md"):
+            _export_markdown(collected_results, output_path)
+        else:
+            console.print(f"[yellow]Unknown output format. Use .json or .md extension. Defaulting to JSON.[/yellow]")
+            _export_json(collected_results, output_path)
 
 
 # ── History ──────────────────────────────────────────────────────────────────
@@ -269,6 +387,96 @@ def _save_to_history(original: str, optimized: str, scores: dict, mode: str) -> 
         pass  # Don't interrupt the user for history failures
 
 
+# ── Compare Mode ─────────────────────────────────────────────────────────────
+
+def _read_prompt_arg(value: str | None, interactive_label: str) -> str:
+    """Read a prompt from arg value (could be file path) or ask interactively."""
+    if value:
+        from pathlib import Path
+        p = Path(value)
+        if p.exists() and p.is_file():
+            return p.read_text(encoding="utf-8").strip()
+        return value
+    return questionary.text(interactive_label).ask() or ""
+
+
+def _print_comparison(prompt1: str, prompt2: str, analysis1: dict, analysis2: dict) -> None:
+    """Display a side-by-side comparison of two analyzed prompts."""
+    console.print(Panel(prompt1[:200] + ("..." if len(prompt1) > 200 else ""), title="[bold]Prompt 1[/bold]"))
+    console.print(Panel(prompt2[:200] + ("..." if len(prompt2) > 200 else ""), title="[bold]Prompt 2[/bold]"))
+
+    scores1 = analysis1.get("scores", {})
+    scores2 = analysis2.get("scores", {})
+
+    table = Table(title="Score Comparison", show_header=True, header_style="bold cyan")
+    table.add_column("Dimension", style="bold")
+    table.add_column("Prompt 1", justify="center")
+    table.add_column("Prompt 2", justify="center")
+    table.add_column("Winner", justify="center")
+
+    for dim in ["clarity", "specificity", "structure", "actionability"]:
+        s1 = scores1.get(dim, 0)
+        s2 = scores2.get(dim, 0)
+        if s1 > s2:
+            winner = "[green]← Prompt 1[/green]"
+        elif s2 > s1:
+            winner = "[green]Prompt 2 →[/green]"
+        else:
+            winner = "[yellow]Tie[/yellow]"
+
+        c1 = "green" if s1 >= s2 else "red" if s1 < s2 else "yellow"
+        c2 = "green" if s2 >= s1 else "red" if s2 < s1 else "yellow"
+        table.add_row(
+            dim.capitalize(),
+            f"[{c1}]{s1}/10[/{c1}]",
+            f"[{c2}]{s2}/10[/{c2}]",
+            winner,
+        )
+
+    total1 = sum(scores1.get(d, 0) for d in ["clarity", "specificity", "structure", "actionability"])
+    total2 = sum(scores2.get(d, 0) for d in ["clarity", "specificity", "structure", "actionability"])
+    tc1 = "green" if total1 >= total2 else "red"
+    tc2 = "green" if total2 >= total1 else "red"
+    overall = "[green]← Prompt 1[/green]" if total1 > total2 else "[green]Prompt 2 →[/green]" if total2 > total1 else "[yellow]Tie[/yellow]"
+    table.add_row("──────────", "─────", "─────", "──────")
+    table.add_row("[bold]Total[/bold]", f"[bold {tc1}]{total1}/40[/bold {tc1}]", f"[bold {tc2}]{total2}/40[/bold {tc2}]", f"[bold]{overall}[/bold]")
+
+    console.print(table)
+
+    gaps1 = analysis1.get("gaps", [])
+    gaps2 = analysis2.get("gaps", [])
+    if gaps1 or gaps2:
+        console.print("\n[bold]Gaps Found:[/bold]")
+        if gaps1:
+            console.print(f"  [yellow]Prompt 1:[/yellow] {', '.join(gaps1)}")
+        if gaps2:
+            console.print(f"  [yellow]Prompt 2:[/yellow] {', '.join(gaps2)}")
+
+
+def cmd_compare(args: argparse.Namespace) -> None:
+    """Compare two prompts side-by-side."""
+    console.print("\n[bold cyan]⚖️  Prompt Optimizer — Compare Mode[/bold cyan]\n")
+
+    prompt1 = _read_prompt_arg(args.prompt1, "Enter first prompt:")
+    prompt2 = _read_prompt_arg(args.prompt2, "Enter second prompt:")
+
+    if not prompt1 or not prompt2:
+        console.print("[yellow]Both prompts are required.[/yellow]")
+        return
+
+    _, optimizer = _get_client_and_optimizer()
+
+    console.print("[bold blue]Analyzing both prompts...[/bold blue]")
+    try:
+        analysis1 = optimizer.analyze(prompt1)
+        analysis2 = optimizer.analyze(prompt2)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        return
+
+    _print_comparison(prompt1, prompt2, analysis1, analysis2)
+
+
 # ── CLI Entry Point ──────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -283,7 +491,9 @@ def main() -> None:
     subparsers.add_parser("optimize", help="Interactive Q&A prompt optimization")
 
     # analyze (one-shot)
-    subparsers.add_parser("analyze", help="One-shot prompt analysis and improvement")
+    analyze_parser = subparsers.add_parser("analyze", help="One-shot prompt analysis and improvement")
+    analyze_parser.add_argument("-i", "--input", type=str, help="Input file with prompts (one per line or JSON array)")
+    analyze_parser.add_argument("-o", "--output", type=str, help="Output file path (JSON or Markdown based on extension)")
 
     # history
     history_parser = subparsers.add_parser("history", help="Manage prompt history")
@@ -301,17 +511,24 @@ def main() -> None:
     delete_parser = history_sub.add_parser("delete", help="Delete a history entry")
     delete_parser.add_argument("id", help="Prompt history ID")
 
+    # compare
+    compare_parser = subparsers.add_parser("compare", help="Compare two prompts side-by-side")
+    compare_parser.add_argument("--prompt1", "-p1", type=str, help="First prompt (or path to file)")
+    compare_parser.add_argument("--prompt2", "-p2", type=str, help="Second prompt (or path to file)")
+
     args = parser.parse_args()
 
     if args.command == "optimize" or args.command is None:
         cmd_interactive()
     elif args.command == "analyze":
-        cmd_analyze()
+        cmd_analyze(args)
     elif args.command == "history":
         if not args.history_action:
             cmd_history(argparse.Namespace(history_action="list", limit=20))
         else:
             cmd_history(args)
+    elif args.command == "compare":
+        cmd_compare(args)
     else:
         parser.print_help()
 
