@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import ValidationError
 from rich.console import Console
 
-from prompt_optimizer.azure_client import AzureClient
+from prompt_optimizer.client import LLMClient
 from prompt_optimizer.schemas import AnalysisResult, ImprovementResult
 
 console = Console(stderr=True)
@@ -35,6 +35,35 @@ _SCORING_ANCHORS: dict[str, dict[str, str]] = {
         "8-9": "immediately executable, output fully defined",
     },
 }
+
+
+_SCORING_EXAMPLES = """\
+Here are examples of scored prompts for calibration:
+
+**Example 1 — Poor prompt:**
+Prompt: "write something about dogs"
+Scores: clarity=3, specificity=2, structure=2, actionability=3
+- clarity (3): The intent to write is somewhat clear, but "something" is vague and open to many interpretations.
+- specificity (2): No details on topic, length, format, or audience — an entirely generic request.
+- structure (2): A single sentence with no organization or logical components.
+- actionability (3): A writer could produce *something*, but the lack of parameters makes it nearly impossible to meet expectations.
+
+**Example 2 — Decent prompt:**
+Prompt: "Write a blog post about the benefits of adopting rescue dogs. Target audience is families."
+Scores: clarity=6, specificity=5, structure=5, actionability=6
+- clarity (6): The main task (blog post about rescue dog benefits) is clear, but details like length and tone are unspecified.
+- specificity (5): Mentions topic and audience but lacks word count, formatting requirements, or source expectations.
+- structure (5): Two logical pieces of information presented, but no explicit sections or role assignment.
+- actionability (6): A writer can start working, but would need to make several assumptions about format and depth.
+
+**Example 3 — Excellent prompt:**
+Prompt: "You are a veterinarian and pet care blogger. Write a 1000-word blog post about the health and emotional benefits of adopting rescue dogs for families with children aged 5-12. Use an encouraging, warm tone. Format: markdown with H2 subheadings, at least 3 sections, include a call-to-action at the end. Constraints: cite at least 2 studies, avoid breed-specific recommendations."
+Scores: clarity=9, specificity=9, structure=9, actionability=9
+- clarity (9): Unambiguous task with a well-defined role, topic, and audience segment.
+- specificity (9): Precise parameters including word count, audience age range, tone, formatting rules, and source requirements.
+- structure (9): Logically organized with role, task, format, tone, and constraints clearly separated.
+- actionability (9): Immediately executable — every requirement is explicit and verifiable.\
+"""
 
 
 def _build_scoring_rubric() -> str:
@@ -78,13 +107,15 @@ You are an expert prompt engineer. Analyze the user's prompt and return a JSON o
 
 {_build_scoring_rubric()}
 
+{_SCORING_EXAMPLES}
+
 Be thorough. Common gaps include: missing role/persona, no output format, vague task description,
 no constraints or boundaries, missing context, no examples, unclear audience, unspecified tone.
 Always return valid JSON.
 """
 
 
-def analyze_prompt(client: AzureClient, prompt_text: str) -> dict[str, Any]:
+def analyze_prompt(client: LLMClient, prompt_text: str) -> dict[str, Any]:
     """Analyze a prompt and return structured analysis with gaps and scores.
 
     Args:
@@ -140,7 +171,7 @@ Always return valid JSON.
 """
 
 
-def improve_prompt(client: AzureClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
+def improve_prompt(client: LLMClient, prompt_text: str, analysis: dict[str, Any]) -> dict[str, Any]:
     """Generate an improved version of a prompt based on analysis.
 
     Args:
