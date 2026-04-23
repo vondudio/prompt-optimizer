@@ -2,8 +2,8 @@
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="8TcilqiSoUXtWGQMWsTRkop5Z8JXp0eME0Ey8albHXPG6kTH6HIfJQQJ99CBACHYHv6XJ3w3AAAAACOGMeo8",
-    base_url="https://ai-vondudio9925ai384200949027.openai.azure.com/openai/v1/"
+    api_key="",
+    base_url=""
 )
 
 response = client.responses.create(
