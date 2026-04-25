@@ -6,6 +6,8 @@ A Python CLI tool that transforms rough ideas into well-structured, effective pr
 
 - **Interactive Q&A Mode** — Analyzes your prompt, asks targeted follow-up questions, and assembles an optimized prompt
 - **One-Shot Analysis** — Paste an existing prompt and get an improved version with scoring
+- **Batch Analysis** — Analyze multiple prompts from a file with JSON or Markdown export
+- **Prompt Comparison** — Compare two prompts side-by-side with scored analysis
 - **Prompt Scoring** — Rates prompts on clarity, specificity, structure, and actionability (1-10)
 - **Prompt History** — Save, search, and re-use past optimized prompts (SQLite)
 
@@ -43,6 +45,9 @@ prompt-optimizer optimize
 
 # One-shot analysis
 prompt-optimizer analyze
+
+# Compare two prompts
+prompt-optimizer compare --prompt1 "first prompt" --prompt2 "second prompt"
 
 # Or run as a module
 python -m prompt_optimizer optimize
@@ -115,6 +120,26 @@ Changes Made:
 ╰──────────────────────╯
 ```
 
+#### Batch Analysis & Export
+
+Analyze multiple prompts from a file and export the results:
+
+```bash
+# Input: JSON array or one prompt per line
+prompt-optimizer analyze --input prompts.txt --output results.md
+
+# Export as JSON
+prompt-optimizer analyze -i prompts.json -o results.json
+```
+
+Supported input formats:
+- **JSON array** — `["prompt one", "prompt two", ...]`
+- **Line-delimited** — one prompt per line in a plain text file
+
+Supported output formats:
+- **`.json`** — structured JSON with scores, changes, and improved prompts
+- **`.md`** — formatted Markdown report
+
 ### History Management
 
 ```bash
@@ -130,6 +155,20 @@ prompt-optimizer history view abc123def456
 # Delete an entry
 prompt-optimizer history delete abc123def456
 ```
+
+### Compare Mode (`compare`)
+
+Compare two prompts side-by-side with scored analysis:
+
+```bash
+# Inline prompts
+prompt-optimizer compare --prompt1 "Write me a blog post" --prompt2 "You are a tech blogger. Write a 1000-word post about Python async patterns for intermediate developers."
+
+# From files
+prompt-optimizer compare -p1 prompt_v1.txt -p2 prompt_v2.txt
+```
+
+The tool analyzes both prompts independently and displays a comparison table showing per-dimension scores (clarity, specificity, structure, actionability) with a winner for each dimension and an overall total.
 
 ## Configuration
 
@@ -159,6 +198,24 @@ The optimizer follows a structured approach based on prompt engineering best pra
    - **Format** → What should the output look like?
    - **Constraints** → What are the boundaries?
    - **Examples** → Any reference examples?
+
+### Architecture
+
+```
+CLI (cli.py) → Optimizer (optimizer.py) → Analyzer (analyzer.py)
+                                        → Questioner (questioner.py)
+                                        → Templates (templates.py)
+                                        → Schemas (schemas.py)
+               LLMClient (client.py) ←── AzureClient (azure_client.py)
+               History (history.py → SQLite)
+```
+
+- **`client.py`** defines the `LLMClient` protocol — the backend interface exposing `chat()` and `chat_json()`.
+- **`azure_client.py`** implements `LLMClient` for Azure OpenAI.
+- **`optimizer.py`** orchestrates the pipeline — delegates analysis, question generation, and prompt assembly to specialist modules.
+- **`schemas.py`** defines Pydantic models (`AnalysisResult`, `ImprovementResult`, `Question`, etc.) for validating structured LLM responses.
+- **`templates.py`** handles prompt assembly in a fixed section order: Role → Context → Audience → Task → Output Format → Tone → Constraints → Examples.
+- **`history.py`** persists prompt pairs to a local SQLite database.
 
 ## Development
 
